@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # AlignmentSketch
 
 A compact multiple sequence alignment (MSA) visualizer that produces SVG figures directly from a FASTA alignment file.
@@ -205,3 +206,11 @@ python alignment_sketch.py -i my_alignment.fasta -l logo.svg -t entropy.txt
 | C | Dark blue |
 | G | Black |
 | T | Dark red |
+=======
+# AlignmentDrawer
+Code to automatically generate graphical representation of alignments (either by emphasizing the differences in the aligned sequences or by computing sequence entropy) as in the picture:
+<img width="919" height="511" alt="image" src="https://github.com/user-attachments/assets/4a6b5052-bf40-4442-a3c5-b2bf3999c21c" />
+Havlová, K., Dvořáčková, M., Peiro, R., Abia, D., Mozgová, I., Vansáčová, L., Gutierrez, C., & Fajkus, J. (2016).
+Variation of 45S rDNA intergenic spacers in Arabidopsis thaliana. Plant Molecular Biology.
+
+>>>>>>> 5aee2beb698283cc7faf4bb20c992489e3d13a3a
