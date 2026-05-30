@@ -1,5 +1,7 @@
 # AlignmentSketch
 
+[![Tests](https://github.com/katkah/AlignmentDrawer/actions/workflows/test.yml/badge.svg)](https://github.com/katkah/AlignmentDrawer/actions/workflows/test.yml)
+
 A compact multiple sequence alignment (MSA) visualizer that produces SVG figures directly from a FASTA alignment file.
 
 ---
