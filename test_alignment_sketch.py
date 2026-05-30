@@ -1,0 +1,203 @@
+"""
+Tests for alignment_sketch.py — built around the real Arabidopsis IGS alignment
+(data/clustalo.fa, 19 sequences × 5126 bp, Clustal Omega output).
+"""
+
+import sys
+import pytest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+from alignment_sketch import (
+    read_alignment,
+    compute_borders,
+    compute_entropy,
+    write_entropy_txt,
+    draw_alignment_svg,
+    draw_entropy_svg,
+    draw_consensus_svg,
+    draw_logo_svg,
+)
+
+DATA_DIR  = Path(__file__).parent / "data"
+ALIGNED   = DATA_DIR / "clustalo.fa"          # Clustal Omega alignment — all same length
+UNALIGNED = DATA_DIR / "IGS_WT_consensuses_Havlova2016.fasta"  # raw sequences — different lengths
+
+
+# ── shared fixtures (computed once per session) ───────────────────────────────
+
+@pytest.fixture(scope="module")
+def records():
+    with open(ALIGNED) as f:
+        return read_alignment(f)
+
+
+@pytest.fixture(scope="module")
+def sequences(records):
+    return [str(r.seq) for r in records]
+
+
+@pytest.fixture(scope="module")
+def borders(sequences):
+    return compute_borders(sequences)
+
+
+@pytest.fixture(scope="module")
+def entropy(sequences):
+    return compute_entropy(sequences)
+
+
+# ── read_alignment ────────────────────────────────────────────────────────────
+
+def test_sequence_count(records):
+    """Alignment must contain 19 IGS variants."""
+    assert len(records) == 19
+
+
+def test_all_sequences_same_length(records):
+    """Clustal Omega output must be a proper alignment — all rows equal length."""
+    lengths = {len(r.seq) for r in records}
+    assert lengths == {5126}
+
+
+def test_rejects_unaligned_input():
+    """Raw sequences with different lengths must cause SystemExit with a clear error."""
+    with open(UNALIGNED) as f:
+        with pytest.raises(SystemExit):
+            read_alignment(f)
+
+
+# ── compute_borders ───────────────────────────────────────────────────────────
+
+def test_borders_count(borders):
+    """Known number of conserved/variable transitions in this alignment."""
+    assert len(borders) == 287
+
+
+def test_borders_last_equals_alignment_length(borders):
+    """Last border must be the alignment length (sentinel value)."""
+    assert borders[-1] == 5126
+
+
+def test_borders_are_sorted(borders):
+    """Borders must be strictly increasing."""
+    assert borders == sorted(borders)
+
+
+def test_borders_within_range(borders, sequences):
+    """Every border index must be within [0, alignment_length] (0-indexed columns)."""
+    aln_len = len(sequences[0])
+    assert all(0 <= b <= aln_len for b in borders)
+
+
+# ── compute_entropy ───────────────────────────────────────────────────────────
+
+def test_entropy_length(entropy, sequences):
+    """One entropy value per alignment column."""
+    assert len(entropy) == len(sequences[0])
+
+
+def test_entropy_minimum_is_zero(entropy):
+    """Fully conserved columns must have entropy exactly 0."""
+    assert min(entropy) == 0.0
+
+
+def test_entropy_maximum_within_dna_range(entropy):
+    """DNA entropy can never exceed 2.0 bits (4 equally frequent bases)."""
+    assert max(entropy) <= 2.0
+
+
+def test_entropy_maximum_value(entropy):
+    """Maximum entropy in this alignment should be ≈ 1.9713 bits."""
+    assert abs(max(entropy) - 1.9713) < 0.001
+
+
+def test_entropy_fully_conserved_column_count(entropy):
+    """3623 columns are fully conserved among non-gap sequences (H = 0.0)."""
+    assert sum(1 for h in entropy if h == 0.0) == 3623
+
+
+def test_entropy_highly_variable_column_count(entropy):
+    """114 columns have H > 1.5 bits (highly variable positions)."""
+    assert sum(1 for h in entropy if h > 1.5) == 114
+
+
+def test_entropy_excludes_gaps(entropy):
+    """Column 1 has 10 gaps and 9 × 'C' — gaps are excluded so H must be 0.0."""
+    assert entropy[0] == 0.0
+
+
+def test_entropy_two_base_column(sequences, entropy):
+    """Column 1595 has 14 × T and 5 × A with no gaps → H ≈ 0.8315 bits."""
+    col = [seq[1594].upper() for seq in sequences]
+    assert col.count("-") == 0, "test assumption: column 1595 has no gaps"
+    assert abs(entropy[1594] - 0.8315) < 0.001
+
+
+# ── write_entropy_txt ─────────────────────────────────────────────────────────
+
+def test_entropy_txt_row_count(sequences, entropy, tmp_path):
+    """Output file must have a header line plus one row per alignment column."""
+    out = tmp_path / "entropy.txt"
+    write_entropy_txt(sequences, entropy, str(out))
+    lines = out.read_text().splitlines()
+    assert lines[0].startswith("pos\tentropy")   # header present
+    assert len(lines) == 5126 + 1               # header + 5126 data rows
+
+
+def test_entropy_txt_column_count(sequences, entropy, tmp_path):
+    """Every data row must have 8 tab-separated columns."""
+    out = tmp_path / "entropy.txt"
+    write_entropy_txt(sequences, entropy, str(out))
+    lines = out.read_text().splitlines()
+    for line in lines[1:]:
+        assert len(line.split("\t")) == 8
+
+
+def test_entropy_txt_conserved_column_values(sequences, entropy, tmp_path):
+    """Column 1 (all C or gap): position=1, entropy=0.0000, IC=2.0000."""
+    out = tmp_path / "entropy.txt"
+    write_entropy_txt(sequences, entropy, str(out))
+    fields = out.read_text().splitlines()[1].split("\t")
+    assert fields[0] == "1"        # 1-based position
+    assert fields[1] == "0.0000"   # entropy
+    assert fields[2] == "2.0000"   # information content
+
+
+def test_entropy_txt_positions_are_sequential(sequences, entropy, tmp_path):
+    """Position column must run 1 … 5126 without gaps."""
+    out = tmp_path / "entropy.txt"
+    write_entropy_txt(sequences, entropy, str(out))
+    lines = out.read_text().splitlines()[1:]
+    positions = [int(line.split("\t")[0]) for line in lines]
+    assert positions == list(range(1, 5127))
+
+
+# ── SVG output files ──────────────────────────────────────────────────────────
+
+@pytest.fixture(scope="module")
+def svg_dir(tmp_path_factory, records, sequences, borders, entropy):
+    """Run the full drawing pipeline once; return the output directory."""
+    d = tmp_path_factory.mktemp("svg")
+    draw_alignment_svg(records, sequences, borders, output=str(d / "alignment.svg"))
+    draw_entropy_svg(records, sequences, entropy,  output=str(d / "entropy.svg"))
+    draw_consensus_svg(sequences, borders,          output=str(d / "consensus.svg"))
+    draw_logo_svg(records, sequences, entropy,      output=str(d / "logo.svg"))
+    return d
+
+
+@pytest.mark.parametrize("filename", [
+    "alignment.svg", "entropy.svg", "consensus.svg", "logo.svg"
+])
+def test_svg_file_created_and_non_empty(svg_dir, filename):
+    """Each drawing function must produce a non-empty file."""
+    assert (svg_dir / filename).stat().st_size > 0
+
+
+@pytest.mark.parametrize("filename", [
+    "alignment.svg", "entropy.svg", "consensus.svg", "logo.svg"
+])
+def test_svg_files_are_valid_xml(svg_dir, filename):
+    """Each SVG must be well-formed XML — catches truncated or broken output."""
+    import xml.etree.ElementTree as ET
+    ET.parse(svg_dir / filename)   # raises ParseError if malformed
