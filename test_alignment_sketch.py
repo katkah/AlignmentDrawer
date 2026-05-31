@@ -1,6 +1,8 @@
 """
-Tests for alignment_sketch.py — built around the real Arabidopsis IGS alignment
-(data/clustalo.fa, 19 sequences × 5126 bp, Clustal Omega output).
+Tests for alignment_sketch.py — built around real Arabidopsis IGS variant sequences.
+
+  data/variants.fa            — 4 unaligned IGS variants (different lengths)
+  data/variants_clustalo.fa   — Clustal Omega alignment of the same 4 sequences
 """
 
 import sys
@@ -20,8 +22,8 @@ from alignment_sketch import (
 )
 
 DATA_DIR  = Path(__file__).parent / "data"
-ALIGNED   = DATA_DIR / "clustalo.fa"          # Clustal Omega alignment — all same length
-UNALIGNED = DATA_DIR / "IGS_WT_consensuses_Havlova2016.fasta"  # raw sequences — different lengths
+ALIGNED   = DATA_DIR / "variants_clustalo.fa"   # aligned — all same length
+UNALIGNED = DATA_DIR / "variants.fa"            # raw sequences — different lengths
 
 
 # ── shared fixtures (computed once per session) ───────────────────────────────
@@ -50,14 +52,14 @@ def entropy(sequences):
 # ── read_alignment ────────────────────────────────────────────────────────────
 
 def test_sequence_count(records):
-    """Alignment must contain 19 IGS variants."""
-    assert len(records) == 19
+    """Alignment must contain 4 IGS variants."""
+    assert len(records) == 4
 
 
 def test_all_sequences_same_length(records):
     """Clustal Omega output must be a proper alignment — all rows equal length."""
     lengths = {len(r.seq) for r in records}
-    assert lengths == {5126}
+    assert lengths == {490}
 
 
 def test_rejects_unaligned_input():
@@ -71,12 +73,12 @@ def test_rejects_unaligned_input():
 
 def test_borders_count(borders):
     """Known number of conserved/variable transitions in this alignment."""
-    assert len(borders) == 287
+    assert len(borders) == 88
 
 
 def test_borders_last_equals_alignment_length(borders):
     """Last border must be the alignment length (sentinel value)."""
-    assert borders[-1] == 5126
+    assert borders[-1] == 490
 
 
 def test_borders_are_sorted(borders):
@@ -88,6 +90,11 @@ def test_borders_within_range(borders, sequences):
     """Every border index must be within [0, alignment_length] (0-indexed columns)."""
     aln_len = len(sequences[0])
     assert all(0 <= b <= aln_len for b in borders)
+
+
+def test_borders_first(borders):
+    """First transition is at column 17 in this alignment."""
+    assert borders[0] == 17
 
 
 # ── compute_entropy ───────────────────────────────────────────────────────────
@@ -108,30 +115,25 @@ def test_entropy_maximum_within_dna_range(entropy):
 
 
 def test_entropy_maximum_value(entropy):
-    """Maximum entropy in this alignment should be ≈ 1.9713 bits."""
-    assert abs(max(entropy) - 1.9713) < 0.001
+    """Maximum entropy in this alignment is 1.5 bits (3 equally frequent bases)."""
+    assert abs(max(entropy) - 1.5) < 0.001
 
 
 def test_entropy_fully_conserved_column_count(entropy):
-    """3623 columns are fully conserved among non-gap sequences (H = 0.0)."""
-    assert sum(1 for h in entropy if h == 0.0) == 3623
-
-
-def test_entropy_highly_variable_column_count(entropy):
-    """114 columns have H > 1.5 bits (highly variable positions)."""
-    assert sum(1 for h in entropy if h > 1.5) == 114
+    """381 columns are fully conserved among non-gap sequences (H = 0.0)."""
+    assert sum(1 for h in entropy if h == 0.0) == 381
 
 
 def test_entropy_excludes_gaps(entropy):
-    """Column 1 has 10 gaps and 9 × 'C' — gaps are excluded so H must be 0.0."""
-    assert entropy[0] == 0.0
+    """Column 18 has 1 gap and 3 × 'C' — gaps excluded so H must be 0.0."""
+    assert entropy[17] == 0.0
 
 
 def test_entropy_two_base_column(sequences, entropy):
-    """Column 1595 has 14 × T and 5 × A with no gaps → H ≈ 0.8315 bits."""
-    col = [seq[1594].upper() for seq in sequences]
-    assert col.count("-") == 0, "test assumption: column 1595 has no gaps"
-    assert abs(entropy[1594] - 0.8315) < 0.001
+    """Column 20 has 3 × A and 1 × C with no gaps → H ≈ 0.8113 bits."""
+    col = [seq[19].upper() for seq in sequences]
+    assert col.count("-") == 0, "test assumption: column 20 has no gaps"
+    assert abs(entropy[19] - 0.8113) < 0.001
 
 
 # ── write_entropy_txt ─────────────────────────────────────────────────────────
@@ -142,7 +144,7 @@ def test_entropy_txt_row_count(sequences, entropy, tmp_path):
     write_entropy_txt(sequences, entropy, str(out))
     lines = out.read_text().splitlines()
     assert lines[0].startswith("pos\tentropy")   # header present
-    assert len(lines) == 5126 + 1               # header + 5126 data rows
+    assert len(lines) == 490 + 1                # header + 490 data rows
 
 
 def test_entropy_txt_column_count(sequences, entropy, tmp_path):
@@ -155,7 +157,7 @@ def test_entropy_txt_column_count(sequences, entropy, tmp_path):
 
 
 def test_entropy_txt_conserved_column_values(sequences, entropy, tmp_path):
-    """Column 1 (all C or gap): position=1, entropy=0.0000, IC=2.0000."""
+    """First column is conserved: position=1, entropy=0.0000, IC=2.0000."""
     out = tmp_path / "entropy.txt"
     write_entropy_txt(sequences, entropy, str(out))
     fields = out.read_text().splitlines()[1].split("\t")
@@ -165,12 +167,12 @@ def test_entropy_txt_conserved_column_values(sequences, entropy, tmp_path):
 
 
 def test_entropy_txt_positions_are_sequential(sequences, entropy, tmp_path):
-    """Position column must run 1 … 5126 without gaps."""
+    """Position column must run 1 … 490 without gaps."""
     out = tmp_path / "entropy.txt"
     write_entropy_txt(sequences, entropy, str(out))
     lines = out.read_text().splitlines()[1:]
     positions = [int(line.split("\t")[0]) for line in lines]
-    assert positions == list(range(1, 5127))
+    assert positions == list(range(1, 491))
 
 
 # ── SVG output files ──────────────────────────────────────────────────────────
