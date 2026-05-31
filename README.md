@@ -221,11 +221,17 @@ python alignment_sketch.py -i my_alignment.fasta -l logo.svg -t entropy.txt
 | C | Dark blue |
 | G | Black |
 | T | Dark red |
-=======
-# Examples
-Graphical representation of alignments of ribosomal DNA intergenic spacers (either by emphasizing the differences in the aligned sequences or by computing sequence entropy)
-<img width="919" height="511" alt="image" src="https://github.com/user-attachments/assets/4a6b5052-bf40-4442-a3c5-b2bf3999c21c" />
-Havlová, K., Dvořáčková, M., Peiro, R., Abia, D., Mozgová, I., Vansáčová, L., Gutierrez, C., & Fajkus, J. (2016).
-Variation of 45S rDNA intergenic spacers in Arabidopsis thaliana. Plant Molecular Biology.
+
+---
+
+## Background
+
+AlignmentSketch was developed to visualise variation in the ribosomal DNA intergenic spacer (IGS) of *Arabidopsis thaliana*. The original figures produced by this tool were published in:
+
+> Havlová, K., Dvořáčková, M., Peiro, R., Abia, D., Mozgová, I., Vansáčová, L., Gutierrez, C., & Fajkus, J. (2016).
+> **Variation of 45S rDNA intergenic spacers in *Arabidopsis thaliana*.**
+> *Plant Molecular Biology.* https://doi.org/10.1007/s11103-016-0543-y
+
+<img width="919" height="511" alt="Original alignment figure from Havlová et al. 2016" src="https://github.com/user-attachments/assets/4a6b5052-bf40-4442-a3c5-b2bf3999c21c" />
 
 
