@@ -2,7 +2,19 @@
 
 [![Tests](https://github.com/katkah/AlignmentDrawer/actions/workflows/test.yml/badge.svg)](https://github.com/katkah/AlignmentDrawer/actions/workflows/test.yml)
 
-A compact multiple sequence alignment (MSA) visualizer that produces SVG figures directly from a FASTA alignment file.
+AlignmentSketch is a command-line tool for visualizing multiple sequence alignments (MSA). It takes a pre-aligned FASTA file and produces four complementary SVG figures: a full alignment view, a per-sequence conservation heatmap, a single-row consensus, and a sequence logo. All outputs are scalable vector graphics suitable for publication.
+
+---
+
+## Background
+
+AlignmentSketch was developed to visualise variation in the ribosomal DNA intergenic spacer (IGS) of *Arabidopsis thaliana*. The original figures produced by this tool were published in:
+
+> Havlová, K., Dvořáčková, M., Peiro, R., Abia, D., Mozgová, I., Vansáčová, L., Gutierrez, C., & Fajkus, J. (2016).
+> **Variation of 45S rDNA intergenic spacers in *Arabidopsis thaliana*.**
+> *Plant Molecular Biology.* https://doi.org/10.1007/s11103-016-0543-y
+
+<img width="919" height="511" alt="Original alignment figure from Havlová et al. 2016" src="https://github.com/user-attachments/assets/4a6b5052-bf40-4442-a3c5-b2bf3999c21c" />
 
 ---
 
@@ -11,8 +23,6 @@ A compact multiple sequence alignment (MSA) visualizer that produces SVG figures
 - Python 3.8 or newer
 - [Biopython](https://biopython.org/) — for reading FASTA files
 - [svgwrite](https://svgwrite.readthedocs.io/) — for generating SVG output
-
-Install both with pip:
 
 ```bash
 pip install biopython svgwrite
@@ -35,29 +45,31 @@ AAACCCGTTTCAGCGAAACCCGTTTGCGT--TTTGG
 AAACCCGTTTATGCGAAACCCGTTTACGTA-TTTGG
 ```
 
+If sequences are not all the same length, the tool exits immediately with a clear error. Input can be a file or piped from stdin, which makes it easy to chain with an alignment tool:
+
+```bash
+mafft sequences.fasta | python alignment_sketch.py
+```
+
 ---
 
 ## Usage
 
 ```bash
+# minimal — reads alignment.fasta, writes four SVGs with default names
 python alignment_sketch.py -i alignment.fasta
-```
 
-This produces four SVG files and is equivalent to:
-
-```bash
+# custom output names and wider line width
 python alignment_sketch.py \
-  --input alignment.fasta \
-  --output alignment.svg \
-  --entropy-output entropy.svg \
-  --consensus-output consensus.svg \
-  --logo-output logo.svg
-```
+  -i alignment.fasta \
+  -o alignment.svg \
+  -e entropy.svg \
+  -c consensus.svg \
+  -l logo.svg \
+  -w 1200
 
-Input can also be piped from stdin:
-
-```bash
-cat alignment.fasta | python alignment_sketch.py -o alignment.svg
+# also write a tab-separated entropy table
+python alignment_sketch.py -i alignment.fasta -t entropy.txt
 ```
 
 ---
@@ -66,13 +78,15 @@ cat alignment.fasta | python alignment_sketch.py -o alignment.svg
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
-| `--input` | `-i` | stdin | Input FASTA alignment file |
+| `--input` | `-i` | stdin | Pre-aligned FASTA input file |
 | `--output` | `-o` | `alignment.svg` | Alignment view output |
 | `--entropy-output` | `-e` | `entropy.svg` | Entropy heatmap output |
 | `--consensus-output` | `-c` | `consensus.svg` | Consensus view output |
 | `--logo-output` | `-l` | `logo.svg` | Sequence logo output |
-| `--entropy-txt` | `-t` | *(none)* | Write per-position entropy table to a text file |
-| `--width` | `-w` | `800` | Maximum sequence line width in pixels before wrapping |
+| `--entropy-txt` | `-t` | *(none)* | Per-position entropy table (TSV) |
+| `--width` | `-w` | `800` | Max sequence line width in pixels before wrapping |
+
+Run `python alignment_sketch.py -h` for the full help text.
 
 ---
 
@@ -82,18 +96,20 @@ cat alignment.fasta | python alignment_sketch.py -o alignment.svg
 
 The main view showing all sequences side by side.
 
-- **Coloured letters** at positions where sequences differ (A = green, C = blue, G = black, T = red)
-- **Grey numbered boxes** at positions where all sequences are identical — the number inside is the length of that conserved block
+- **Coloured letters** at positions where sequences differ
+- **Grey numbered boxes** at positions where all sequences are identical — the number is the length of that conserved block
 - Coordinate ticks below the last sequence at the start of each variable region
 - Long alignments wrap automatically; line width is controlled with `--width`
 
+Base colours: A = green, C = dark blue, G = black, T = dark red.
+
 ### entropy.svg — Entropy heatmap
 
-A compact per-sequence, per-position conservation overview.
+A compact fixed-width overview strip showing conservation across the full alignment at a glance.
 
-- Each position is drawn as a coloured rectangle per sequence
-- **Dark grey** = conserved (low entropy), **light grey** = variable (high entropy)
-- **Thin black bars** mark gap (`-`) positions within a sequence
+- **Dark grey** = conserved (low Shannon entropy), **light grey** = variable (high entropy)
+- **Thin black bar** = gap (`-`) in that sequence
+- The whole alignment always fits within `--width` pixels — no line wrapping
 
 #### How entropy is calculated
 
@@ -103,71 +119,41 @@ For each alignment column, Shannon entropy is computed as:
 H = −Σ (freq × log₂ freq)
 ```
 
-Where `freq` is the frequency of each base (A, C, G, T) among the **non-gap** sequences in that column.
+where `freq` is the frequency of each base (A, C, G, T) among the **non-gap** sequences in that column. Gaps are excluded so that a column where all present sequences agree is correctly scored as conserved (H = 0) even when some sequences have a gap there.
 
-**Step by step:**
-
-1. Count how many sequences have A, C, G, T or a gap (`-`) at this column.
-2. Gaps are excluded — `total = number of sequences − number of gaps`.
-3. For each base: `freq = count / total`.
-4. Apply the formula: multiply each frequency by its log₂, sum them, negate.
-
-**Range:**
-- `H = 0.0` — all non-gap sequences have the same base (fully conserved). Drawn as **dark grey**.
-- `H = 2.0` — A, C, G, T are equally frequent (maximum disorder). Drawn as **light grey**.
-
-**Why gaps are excluded:**  
-A gap means the sequence simply has no base at that position (e.g. due to an insertion in other sequences). Including gaps in the frequency count would artificially inflate entropy at positions that are otherwise perfectly conserved. By excluding them, entropy reflects only the variation among sequences that *do* have a base there.
-
-**Worked example** — 4 sequences at one column:
-
-| Sequences | Base |
-|-----------|------|
-| Mouse     | A    |
-| Human     | A    |
-| Chimp     | —    |
-| Rat       | A    |
-
-→ gaps = 1, total = 3, freq(A) = 3/3 = 1.0  
-→ H = −(1.0 × log₂ 1.0) = **0.0** (conserved despite the gap)
-
-Another column — all four bases present equally:
-
-→ freq(A) = freq(C) = freq(G) = freq(T) = 0.25  
-→ H = −4 × (0.25 × log₂ 0.25) = **2.0** (maximum entropy)
+- `H = 0.0` — fully conserved, drawn as **dark grey**
+- `H = 2.0` — all four bases equally frequent, drawn as **light grey**
 
 ### consensus.svg — Consensus view
 
-The opposite of the alignment view — a single-row summary showing only what is shared.
+The complement of the alignment view — a single row showing only what is shared across all sequences.
 
 - **Coloured letters** at positions conserved across all sequences
-- **Grey numbered boxes** at variable positions, compressed into a single block with the region length
+- **Grey numbered boxes** at variable positions, labelled with the region length
 - Coordinate ticks at the start of each conserved block
 
 ### logo.svg — Sequence logo
 
 A classic sequence logo showing conservation and base composition per column.
 
-- **Bar height** = information content (IC = 2 − entropy), in bits. A fully conserved column reaches the maximum height (2 bits); a random column produces no bar.
-- **Coloured segments** within each bar show base frequency (A = green, C = blue, G = black, T = red). The most frequent base is drawn at the bottom.
-- A colour legend (A / C / G / T) and position ticks every 20 bp are included.
+- **Bar height** = information content (IC = 2 − entropy, in bits). A fully conserved column reaches maximum height (2 bits); a completely random column produces no bar.
+- **Coloured segments** show base frequency within each bar — most frequent base at the bottom
+- Colour legend and position ticks every 20 bp are included
 
-### entropy table (--entropy-txt)
+### entropy table (`--entropy-txt`)
 
-A tab-separated text file with one row per alignment column:
+A tab-separated file with one row per alignment column:
 
 ```
 pos   entropy   IC      A   C   G   T   gaps
 1     0.0000    2.0000  4   0   0   0   0
-2     0.0000    2.0000  4   0   0   0   0
 11    1.5000    0.5000  1   2   0   1   0
-...
 ```
 
 | Column | Description |
 |--------|-------------|
 | `pos` | 1-based alignment position |
-| `entropy` | Shannon entropy (0 = conserved, max ≈ 2 for DNA) |
+| `entropy` | Shannon entropy (0 = conserved, up to 2.0 for DNA) |
 | `IC` | Information content in bits (2 − entropy) |
 | `A C G T` | Raw base counts at that column |
 | `gaps` | Number of gap characters (`-`) |
@@ -181,57 +167,22 @@ The figures below are produced from a real Arabidopsis IGS variant alignment (`d
 **Alignment view** — coloured letters at variable positions, conserved blocks as numbered grey boxes:
 ![Alignment view](examples/alignment.svg)
 
-**Entropy heatmap** — dark grey = conserved, light grey = variable, thin bar = gap:
+**Entropy heatmap** — compact overview strip, dark grey = conserved, light grey = variable:
 ![Entropy heatmap](examples/entropy.svg)
 
 **Consensus view** — single row showing only conserved positions:
 ![Consensus view](examples/consensus.svg)
 
-**Sequence logo** — bar height = information content (bits), segments = base frequencies:
+**Sequence logo** — bar height = information content, segments = base frequencies:
 ![Sequence logo](examples/logo.svg)
 
 ---
 
-**Run commands:**
+## Testing
+
+The test suite is built around a real Arabidopsis IGS variant alignment and covers alignment parsing, border detection, entropy calculation, table output, and SVG generation.
 
 ```bash
-# basic run — all four outputs
-python alignment_sketch.py -i my_alignment.fasta
-
-# custom output names and wider line width
-python alignment_sketch.py \
-  -i my_alignment.fasta \
-  -o my_alignment.svg \
-  -e my_entropy.svg \
-  -c my_consensus.svg \
-  -l my_logo.svg \
-  -w 1200
-
-# logo and entropy table only
-python alignment_sketch.py -i my_alignment.fasta -l logo.svg -t entropy.txt
+pip install pytest
+python -m pytest test_alignment_sketch.py -v
 ```
-
----
-
-## Base colours
-
-| Base | Colour |
-|------|--------|
-| A | Green |
-| C | Dark blue |
-| G | Black |
-| T | Dark red |
-
----
-
-## Background
-
-AlignmentSketch was developed to visualise variation in the ribosomal DNA intergenic spacer (IGS) of *Arabidopsis thaliana*. The original figures produced by this tool were published in:
-
-> Havlová, K., Dvořáčková, M., Peiro, R., Abia, D., Mozgová, I., Vansáčová, L., Gutierrez, C., & Fajkus, J. (2016).
-> **Variation of 45S rDNA intergenic spacers in *Arabidopsis thaliana*.**
-> *Plant Molecular Biology.* https://doi.org/10.1007/s11103-016-0543-y
-
-<img width="919" height="511" alt="Original alignment figure from Havlová et al. 2016" src="https://github.com/user-attachments/assets/4a6b5052-bf40-4442-a3c5-b2bf3999c21c" />
-
-
