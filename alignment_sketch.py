@@ -287,84 +287,54 @@ def find_deletion_end(seq, position):
 
 
 def draw_entropy_svg(records, sequences, entropy, output="entropy.svg", max_line_w=MAX_LINE_W):
+    """Compact overview strip: the whole alignment fits in max_line_w — no line wrapping.
+    COL_W is computed from the sequence length so every column gets a proportional slice."""
     n = len(sequences)
     seq_len = len(sequences[0])
 
-    COL_W = 10        # column width — len_rect1 = 10 in original
-    RECT_H = ROW_H - 2   # full-height rect — proportional to font_size_3 in original
-    DEL_H = max(2, ROW_H // 8)  # thin deletion bar — proportional to font_size_4 = 8 in original
+    COL_W = max_line_w / seq_len  # float — may be well below 1 px for long alignments
+    RECT_H = ROW_H - 2
+    DEL_H = max(2, ROW_H // 8)
     head_w = int(max(len(r.id) for r in records) * CHAR_W + HEAD_PAD)
-    block_h = (n + 2) * ROW_H
 
-    def y_row(s, ln):
-        """Baseline Y for sequence row s on wrapped line ln."""
-        return ln * block_h + (s + 1) * ROW_H
+    def y_row(s):
+        return (s + 1) * ROW_H
 
-    def y_rect_top(s, ln):
-        """Top of full-height rect — centered on the row."""
-        return y_row(s, ln) - FONT_SIZE // 2 - RECT_H // 2
+    def y_rect_top(s):
+        return y_row(s) - FONT_SIZE // 2 - RECT_H // 2
 
-    def y_del_top(s, ln):
-        """Top of thin deletion bar — centered on the row."""
-        return y_row(s, ln) - FONT_SIZE // 2 - DEL_H // 2
+    def y_del_top(s):
+        return y_row(s) - FONT_SIZE // 2 - DEL_H // 2
 
     cmds = []
-    lines_used = {0}
 
-    # --- Draw sequences: one pass per sequence (mirrors original per-sequence loop) ---
+    # headers — drawn once on the left
+    for s, r in enumerate(records):
+        cmds.append(('text', 0, y_row(s), r.id, '#606060', FONT_SIZE))
+
+    # one horizontal strip per sequence, no wrapping
     for s in range(n):
         x = head_w
-        cur_line = 0
         position = 0
 
         while position < seq_len:
-            # line wrap
-            if x + COL_W > head_w + max_line_w and x > head_w:
-                cur_line += 1
-                x = head_w
-                lines_used.add(cur_line)
-
             if sequences[s][position] != '-':
-                # group consecutive non-gap positions with the same color
                 run = count_equal_color_run(sequences[s], entropy, position)
-                # clamp run to not exceed the current line
-                cols_left = max(1, (head_w + max_line_w - x) // COL_W)
-                run = min(run, cols_left)
-
                 gray = min(220, int(150 + entropy[position] * 100))
                 color = f'rgb({gray},{gray},{gray})'
-                cmds.append(('rect', x, y_rect_top(s, cur_line), COL_W * run, RECT_H, color, color, 0))
+                cmds.append(('rect', x, y_rect_top(s), COL_W * run, RECT_H, color, color, 0))
                 x += COL_W * run
                 position += run
-
             else:
-                # draw one thin black rect for the full deletion run
                 del_end = find_deletion_end(sequences[s], position)
                 del_run = del_end - position
-
-                # draw deletion, splitting across line boundaries if needed
-                while del_run > 0:
-                    if x + COL_W > head_w + max_line_w and x > head_w:
-                        cur_line += 1
-                        x = head_w
-                        lines_used.add(cur_line)
-                    cols_left = max(1, (head_w + max_line_w - x) // COL_W)
-                    cols_this = min(del_run, cols_left)
-                    cmds.append(('rect', x, y_del_top(s, cur_line), COL_W * cols_this, DEL_H,
-                                 '#000000', '#000000', 0))
-                    x += COL_W * cols_this
-                    del_run -= cols_this
-
+                cmds.append(('rect', x, y_del_top(s), COL_W * del_run, DEL_H,
+                             '#000000', '#000000', 0))
+                x += COL_W * del_run
                 position = del_end
 
-    # --- Add headers for every wrapped line ---
-    for ln in sorted(lines_used):
-        for s, r in enumerate(records):
-            cmds.append(('text', 0, y_row(s, ln), r.id, '#606060', FONT_SIZE))
-
-    # --- Canvas and render ---
     svg_w = head_w + max_line_w + HEAD_PAD
-    svg_h = (max(lines_used) + 1) * block_h + ROW_H
+    svg_h = (n + 1) * ROW_H
 
     dwg = svgwrite.Drawing(output, size=(f'{int(svg_w)}px', f'{int(svg_h)}px'))
 
@@ -377,8 +347,9 @@ def draw_entropy_svg(records, sequences, entropy, output="entropy.svg", max_line
                              font_family='Courier New, monospace'))
         elif kind == 'rect':
             _, cx, cy, w, h, fill, stroke, sw = cmd
-            dwg.add(dwg.rect(insert=(cx, cy), size=(w, h),
-                             fill=fill, stroke=stroke, stroke_width=sw))
+            if w > 0 and h > 0:
+                dwg.add(dwg.rect(insert=(cx, cy), size=(w, h),
+                                 fill=fill, stroke=stroke, stroke_width=sw))
 
     dwg.save()
     print(f"Saved: {output}")
