@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 *.svg
+!examples/*.svg
 *.txt
 data/clustalo.fa
 data/IGS_WT_consensuses_Havlova2016.fasta

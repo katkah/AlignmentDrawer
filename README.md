@@ -176,13 +176,29 @@ pos   entropy   IC      A   C   G   T   gaps
 
 ## Examples
 
-**Basic run with all outputs:**
-```bash
-python alignment_sketch.py -i my_alignment.fasta
-```
+The figures below are produced from a real Arabidopsis IGS variant alignment (`data/variants_clustalo.fa`, 4 sequences × 490 bp).
 
-**Custom output names and wider line width:**
+**Alignment view** — coloured letters at variable positions, conserved blocks as numbered grey boxes:
+![Alignment view](examples/alignment.svg)
+
+**Entropy heatmap** — dark grey = conserved, light grey = variable, thin bar = gap:
+![Entropy heatmap](examples/entropy.svg)
+
+**Consensus view** — single row showing only conserved positions:
+![Consensus view](examples/consensus.svg)
+
+**Sequence logo** — bar height = information content (bits), segments = base frequencies:
+![Sequence logo](examples/logo.svg)
+
+---
+
+**Run commands:**
+
 ```bash
+# basic run — all four outputs
+python alignment_sketch.py -i my_alignment.fasta
+
+# custom output names and wider line width
 python alignment_sketch.py \
   -i my_alignment.fasta \
   -o my_alignment.svg \
@@ -190,10 +206,8 @@ python alignment_sketch.py \
   -c my_consensus.svg \
   -l my_logo.svg \
   -w 1200
-```
 
-**Generate only the logo and entropy table:**
-```bash
+# logo and entropy table only
 python alignment_sketch.py -i my_alignment.fasta -l logo.svg -t entropy.txt
 ```
 
